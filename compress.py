@@ -1,15 +1,18 @@
-import sys
 import imageio
-import numpy as np
 import math
 from bitstring import BitArray
-#Preberemo sliko
+import time
+import cProfile
 def read_image(imagepath):
+
     image = imageio.v2.imread(imagepath)
     height, width = image.shape[:2]
     return image.tolist(), height, width
 
 def predict(p, x, y):
+    # p == image
+    # x == height
+    # y == width
     k = 0
     e = [0] * x * y
     for j in range(y):
@@ -30,8 +33,11 @@ def predict(p, x, y):
             k += 1
     return e
 
-
 def setHeader(h, f, l, no):
+    # h == višina slike
+    # f == prvi element iz C
+    # l == zadnji element iz C
+    # no == število elementov v C
     h_bits = [int(bit) for bit in bin(h)[2:].zfill(16)]
     f_bits = [int(bit) for bit in bin(f)[2:].zfill(8)]
     l_bits = [int(bit) for bit in bin(l)[2:].zfill(32)]
@@ -40,84 +46,72 @@ def setHeader(h, f, l, no):
     return header
 
 def encode(g, c):
-    binary_representation = bin(c)[2:]  # Convert to binary and remove the '0b' prefix
-    padded_binary = binary_representation.zfill(g)  # Pad with zeros to the specified length
-    binary_list = [int(bit) for bit in padded_binary]  # Convert to a list of integers
+    # g == število bitov
+    # c == vrednost
+    binary_representation = bin(c)[2:]
+    padded_binary = binary_representation.zfill(g)
+    binary_list = [int(bit) for bit in padded_binary]
     return binary_list
 
-
-
-def ic(B,C,L,H):
+def ic(B, C, L, H):
     if H - L > 1:
         if C[H] != C[L]:
             m = math.floor(0.5 * (H + L))
-            g = math.ceil(math.log((C[H]-C[L] + 1),2))
-            B.extend(encode(g,(C[m]- C[L])))
+            g = math.ceil(math.log2((C[H] - C[L] + 1)))
+            B.extend(encode(g, (C[m] - C[L])))
             if L < m:
-                ic(B,C,L,m)
+                ic(B, C, L, m)
             if m < H:
-                ic(B,C,m,H)
+                ic(B, C, m, H)
     return B
+
 def compress(p, x, y):
+    # p == slika
+    # x == višina
+    # y == širina
     e = predict(p, x, y)
     n = x * y
     N = [0] * n
     C = [0] * n
-    B = []
     N[0] = e[0]
     for i in range(1, n):
-        if e[i] >= 0:
-            N[i] = 2 * e[i]
-        else:
-            N[i] = 2 * abs(e[i]) - 1
+        N[i] = 2 * e[i] if e[i] >= 0 else 2 * abs(e[i]) - 1
     C[0] = N[0]
     for j in range(1, n):
         C[j] = C[j - 1] + N[j]
-    B.extend(setHeader(x, C[0], C[n-1], n))
-    B_1 = []
-    B.extend(ic(B_1,C,0,n-1))
+    B = setHeader(x, C[0], C[n - 1], n)
+    B1 = []
+    B.extend(ic(B1, C, 0, n - 1))
     return B
 
 
-def encode(g, c):
-    binary_representation = bin(c)[2:]  # Convert to binary and remove the '0b' prefix
-    padded_binary = binary_representation.zfill(g)  # Pad with zeros to the specified length
-    binary_list = [int(bit) for bit in padded_binary]  # Convert to a list of integers
-    return binary_list
-
-
-p, x, y = read_image("./slike BMP2/Baboon.bmp")
-
-B = compress(p,x,y)
-
-
-
 def writeFile(B, filepath):
-    # Convert the list of bits to a bitstring
     bitstream = BitArray(B)
-
-    # Open the file in binary write mode ('wb')
     with open(filepath, 'wb') as file:
-        # Write the bitstream to the file
         file.write(bitstream.tobytes())
-writeFile(B, "./outPut1.bin")
 
-
-"""p = [[23, 21, 21, 23, 23], [24, 22, 22, 20, 24], [23, 22, 22, 19, 23], [26, 25, 21, 19, 22]]
-x = len(p)  # višina slike
-y = len(p[0])  # širina slike
-B = compress(p, x, y)
-e = [23, -1, 1, -3, 2, 0, 0, 0, 0, 0, 0, 4, -2, 3, 1, 0, 0, -4, 0, 1]
-n = [23, 1, 2, 5, 4, 0, 0, 0, 0, 0, 0, 8, 3, 6, 2, 0, 0, 7, 0, 2]
-c = [23, 24, 26, 31, 35, 35, 35, 35, 35, 35, 35, 43, 46, 52, 54, 54, 54, 61, 61, 63]"""
-print(len(B))
 def main():
-    return 0
+    image_files = [
 
+        "Mosaic.bmp"
+    ]
+    with open("compression_times.txt", "w") as time_file:
+        for image in image_files:
+            image_path = f"./slike BMP2/{image}"
+
+            start_time = time.time()
+
+            p, x, y = read_image(image_path)
+            B = compress(p, x, y)
+
+            output_file = f"./output/{image[:-4]}.bin"
+            writeFile(B, output_file)
+
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+
+            time_file.write(f"{image}: {elapsed_time:.4f} s\n")
 
 if __name__ == "__main__":
     main()
-
-
-
 
